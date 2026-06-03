@@ -1,3 +1,3 @@
 # MaxBoy
 
-A jumbo sized Gameboy using a LED screen. 
+A jumbo sized Gameboy using a HUB75 screen. 
