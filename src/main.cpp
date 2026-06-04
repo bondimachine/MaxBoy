@@ -178,10 +178,6 @@ bool callback = false;
 
 void setup() {
 
-    overclock();
-
-    Serial.println("Overclocked");
-
 
   #ifdef USB_INPUT
   Serial.setTX(16);
@@ -248,6 +244,8 @@ void test_palette() {
 }
 
 volatile bool frame_ready = false;
+volatile bool freeze = false;
+
 void loop() {
 
     #ifdef SHOW_FPS
@@ -256,8 +254,9 @@ void loop() {
     #endif
     // play("/link128x128.gif");
     // test_screen_coverage();
-    loop_gb();
-    frame_ready = true;
+    if (!freeze) {
+      loop_gb();
+      frame_ready = true;
 
     #ifdef SHOW_FPS    
     frame_count++;
@@ -268,7 +267,9 @@ void loop() {
         last_frame_time = now;
     }
     #endif
-  	if (next_rom) {
+    }
+
+    if (next_rom) {
         current_rom = (current_rom + 1) % ROM_COUNT;
         palette = current_rom+1;
         load_rom(roms[current_rom]);
@@ -347,6 +348,12 @@ void loop1() {
         case 'Y':
           shift_y++;
           Serial.println(shift_y);
+          break;
+        case 'n':
+          next_rom = true;
+          break;
+        case 'f':
+          freeze = !freeze;
           break;
       }
     }

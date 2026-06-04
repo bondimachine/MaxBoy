@@ -114,12 +114,6 @@ void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH],
 struct gb_s gb;
 
 
-void overclock() {
-    vreg_set_voltage(VREG_VOLTAGE_1_15);
-    sleep_ms(2);
-	set_sys_clock_khz(264000, true);
-}
-
 void setup_gb(void) {
 	enum gb_init_error_e ret;
 
