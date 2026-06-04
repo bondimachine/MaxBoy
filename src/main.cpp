@@ -5,6 +5,8 @@
 
 
 #define USB_INPUT 1
+#define SHOW_FPS 1
+// #define WAIT_SERIAL 1
 
 #ifdef USB_INPUT
   #define Serial Serial1
@@ -34,9 +36,10 @@ uint8_t mux_list[] = { DMD_PIN_A , DMD_PIN_B , DMD_PIN_C , DMD_PIN_D , DMD_PIN_E
 // All this pins also must be consecutive in ascending order
 uint8_t custom_rgbpins[] = { 11, 0,1,2,3,4,5 }; // CLK, R0, G0, B0, R1, G1, B1
 
-
 #define RGB128x128plainS64 33,128,128,64,0		// 128x128 1/64
-DMD_RGB_FM6373<RGB128x128plainS64,COLOR_4BITS> dmd(mux_list, DMD_PIN_nOE, DMD_PIN_SCLK, custom_rgbpins, DISPLAYS_ACROSS, DISPLAYS_DOWN, ENABLE_DUAL_BUFFER);
+#define DMD_BASE_CLASS DMD_RGB_FM6373<RGB128x128plainS64,COLOR_4BITS>
+#include "fastdmddraw.h"
+FastDMD dmd(mux_list, DMD_PIN_nOE, DMD_PIN_SCLK, custom_rgbpins, DISPLAYS_ACROSS, DISPLAYS_DOWN, ENABLE_DUAL_BUFFER);
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 128
@@ -145,71 +148,20 @@ void test_screen_coverage() {
 File romFile;
 #include "gb.h"
 
-
-void setup() {
-#ifdef USB_INPUT
-  Serial.setTX(16);
-  Serial.setRX(17);
-#endif
-    Serial.begin(115200);
-    while (!Serial) {
-      delay(10);   // wait for native usb
-    }
-    Serial.println("Starting...");
-	  dmd.init(); 
-    Serial.println("DMD initialized");
-
-    // Initialize GIF
-    gif.begin(GIF_PALETTE_RGB565_LE);
-    
-    // Initialize LittleFS
-    if (!LittleFS.begin()) {
-        Serial.println("LittleFS mount failed");
-        return;
-    }
-    Serial.println("LittleFS mounted");
-
-    romFile = LittleFS.open("/tetris.gb", "r");
+void load_rom(const char *path) {
+    romFile = LittleFS.open(path, "r");
     if (!romFile) {
         while (1) {
             Serial.println("Failed to open ROM file");
         }
     }
     romFile.read(rom_bank0, sizeof(rom_bank0));
-    
-    setup_gb();
-    palette = 1;
-    gb.direct.frame_skip = 1;
 }
 
-void test_palette() {
-      for (int y = 0; y < 64; y++) {
-        for (int x = 0; x < 64; x++) {
-          dmd.drawPixel(x, y, palettes[palette][0][2]);
-        }
-        for (int x = 64; x < 128; x++) {
-          dmd.drawPixel(x, y, palettes[palette][0][3]);
-        }
-    }
-
-    for (int y = 64; y < 128; y++) {
-        for (int x = 0; x < 64; x++) {
-          dmd.drawPixel(x, y, palettes[palette][0][0]);
-        } 
-        for (int x = 64; x < 128; x++) {
-          dmd.drawPixel(x, y, palettes[palette][0][1]);
-        }
-    }
-    dmd.swapBuffers(true);
-}
-
-void loop() {
-
-    // play("/link128x128.gif");
-    // test_screen_coverage();
-    loop_gb();
-
-}
+#define ROM_COUNT 4
+const char* roms[] = { "/tetris.gb", "/drmario.gb", "/mario.gb", "/zelda.gb"  };
+uint8_t current_rom = 0;
+bool next_rom = false;
 
 #ifdef USB_INPUT
 
@@ -224,15 +176,40 @@ bool callback = false;
 
 #endif
 
-void setup1() {
-
-    while (!Serial) {
-      delay(10);   // wait for native usb
-    }
+void setup() {
 
     overclock();
 
     Serial.println("Overclocked");
+
+
+  #ifdef USB_INPUT
+  Serial.setTX(16);
+  Serial.setRX(17);
+#endif
+    Serial.begin(115200);
+#ifdef WAIT_SERIAL
+    while (!Serial) {
+      delay(10);   // wait for native usb
+    }
+#endif    
+    Serial.println("Starting...");
+
+    // Initialize GIF
+    gif.begin(GIF_PALETTE_RGB565_LE);
+    
+    // Initialize LittleFS
+    if (!LittleFS.begin()) {
+        Serial.println("LittleFS mount failed");
+        return;
+    }
+    Serial.println("LittleFS mounted");
+
+    load_rom(roms[0]);
+    setup_gb();
+    palette = 1;
+    gb.direct.frame_skip = 1;
+    gb.direct.interlace = 1;
 
 #ifdef USB_INPUT
 
@@ -247,16 +224,84 @@ void setup1() {
 
     Serial.println("USB intialized");
 #endif
-
 }
 
-void loop1() {
-    if (gb.gb_frame) {
-        dmd.swapBuffers(true);
+void test_palette() {
+      for (int y = 0; y < 64; y++) {
+        for (int x = 0; x < 64; x++) {
+          dmd.writePixelFast(x, y, palettes[palette][0][2]);
+        }
+        for (int x = 64; x < 128; x++) {
+          dmd.writePixelFast(x, y, palettes[palette][0][3]);
+        }
     }
+
+    for (int y = 64; y < 128; y++) {
+        for (int x = 0; x < 64; x++) {
+          dmd.writePixelFast(x, y, palettes[palette][0][0]);
+        } 
+        for (int x = 64; x < 128; x++) {
+          dmd.writePixelFast(x, y, palettes[palette][0][1]);
+        }
+    }
+    dmd.swapBuffers(true);
+}
+
+volatile bool frame_ready = false;
+void loop() {
+
+    #ifdef SHOW_FPS
+      static uint8_t frame_count = 0;
+      static uint32_t last_frame_time = millis();
+    #endif
+    // play("/link128x128.gif");
+    // test_screen_coverage();
+    loop_gb();
+    frame_ready = true;
+
+    #ifdef SHOW_FPS    
+    frame_count++;
+    uint32_t now = millis();
+    if (now - last_frame_time >= 1000) {
+        Serial.printf("FPS: %d\n", frame_count);
+        frame_count = 0;
+        last_frame_time = now;
+    }
+    #endif
+  	if (next_rom) {
+        current_rom = (current_rom + 1) % ROM_COUNT;
+        palette = current_rom+1;
+        load_rom(roms[current_rom]);
+        Serial.println(roms[current_rom]);
+        setup_gb();
+	  	  next_rom = false;
+	  }
+
 #ifdef USB_INPUT
     USBHost.task();
 #endif
+}
+
+
+void setup1() {
+	  dmd.init(); 
+    Serial.println("DMD initialized");
+}
+
+void loop1() {
+    if (frame_ready) {
+      frame_ready = false;
+      for (int y = 0; y < SCREEN_HEIGHT; y++) {
+        uint8_t *line = &buffer[y * SCREEN_WIDTH];
+        for (int x = 0; x < SCREEN_WIDTH; x++) {
+          uint8_t pixel = line[x];
+          uint8_t* colors = &palettes[palette][(pixel & LCD_PALETTE_ALL) >> 4]
+                              [pixel & 3][0];
+          dmd.writePixelFast(x, y, colors);
+        }
+      }
+      dmd.swapBuffers(true);
+    }
     if (Serial.available()) {
       int inByte = Serial.read();
       switch(inByte) {
@@ -462,8 +507,12 @@ static void process_joystick_report(joystick_report const *report) {
         Serial.println(col_skip);
       }
     } else if ((buttons & 0x10) != 0 && (buttons & 0x20) != 0) {
-      palette = (palette + 1) % PALETTE_COUNT;
-      Serial.println(palette);
+      if (!gb.direct.joypad_bits.start) {
+        next_rom = true;
+      } else {
+        palette = (palette + 1) % PALETTE_COUNT;
+        Serial.println(palette);
+      }
     }
 }
 //--------------------------------------------------------------------+

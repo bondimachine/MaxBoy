@@ -70,6 +70,7 @@ uint8_t shift_x = 0;
 uint8_t shift_y = 0;
 uint8_t line_skip = 0;
 uint8_t col_skip = 0;
+uint8_t buffer[SCREEN_WIDTH * SCREEN_HEIGHT];
 void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH],
 		   const uint_fast8_t line) {
 
@@ -89,9 +90,8 @@ void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH],
 
 	uint8_t skip_count = 0;
 	uint8_t skipped = 0;
+	uint8_t *buffer_line = &buffer[effective_line * SCREEN_WIDTH];
 	for (uint_fast8_t x = shift_x; x<LCD_WIDTH; x++) {
-        uint16_t color = palettes[palette][(pixels[x] & LCD_PALETTE_ALL) >> 4]
-				[pixels[x] & 3];
 
 		if (col_skip > 0 && skip_count == col_skip) {
 			skip_count = 0;
@@ -105,7 +105,7 @@ void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH],
 		if (effective_x >= SCREEN_WIDTH) {
 			continue;
 		}
-        dmd.writePixel(effective_x, effective_line, color);
+		buffer_line[effective_x] = pixels[x];
     }
 }
 
@@ -128,21 +128,21 @@ void setup_gb(void) {
 	/* Initialise GB context. */
 	ret = gb_init(&gb, &gb_rom_read, &gb_cart_ram_read,
 		      &gb_cart_ram_write, &gb_error, NULL);
-	printf("GB \n");
+	Serial.println("GB");
 
 	if(ret != GB_INIT_NO_ERROR) {
-		printf("Error: %d\n", ret);
+		Serial.printf("Error: %d\n", ret);
 	}
 
 #if ENABLE_LCD
 	gb_init_lcd(&gb, &lcd_draw_line);
 
-	printf("LCD ");
+	Serial.println("LCD ");
 	//gb.direct.interlace = 1;
 #endif
 #if ENABLE_SOUND
 	audio_init();
-	printf("AUDIO ");
+	Serial.println("AUDIO ");
 #endif
 }
 
