@@ -204,7 +204,7 @@ void setup() {
     load_rom(roms[0]);
     setup_gb();
     palette = 1;
-    gb.direct.frame_skip = 1;
+    // gb.direct.frame_skip = 1;
     gb.direct.interlace = 1;
 
 #ifdef USB_INPUT
@@ -250,23 +250,34 @@ void loop() {
 
     #ifdef SHOW_FPS
       static uint8_t frame_count = 0;
-      static uint32_t last_frame_time = millis();
+      static uint32_t last_frame_time_fps = micros();
     #endif
     // play("/link128x128.gif");
     // test_screen_coverage();
     if (!freeze) {
+      uint32_t start = micros();
       loop_gb();
       frame_ready = true;
 
-    #ifdef SHOW_FPS    
-    frame_count++;
-    uint32_t now = millis();
-    if (now - last_frame_time >= 1000) {
-        Serial.printf("FPS: %d\n", frame_count);
-        frame_count = 0;
-        last_frame_time = now;
-    }
-    #endif
+      uint32_t now = micros();
+      if (now < start) {
+          // micros() overflowed, ignore
+          return;
+      }
+      uint32_t elapsed = now - start;
+      if (elapsed < 16000) {
+          // Frame is too fast, delay to maintain ~60 FPS
+          uint64_t to_delay = 16000 - elapsed;  // compensate for some overhead in processing
+          sleep_us(to_delay);
+      }
+      #ifdef SHOW_FPS
+      frame_count++;
+      if (now - last_frame_time_fps >= 1000000) {
+          Serial.printf("FPS: %d\n", frame_count);
+          frame_count = 0;
+          last_frame_time_fps = now;
+      }
+      #endif
     }
 
     if (next_rom) {
